@@ -1,0 +1,9 @@
+[submodule "CommonLib"]
+	path = CommonLib
+	url = https://github.com/yaetoti/CommonLib.git
+[submodule "ConsoleLib"]
+	path = ConsoleLib
+	url = https://github.com/yaetoti/ConsoleLib.git
+[submodule "NetworkLib"]
+	path = NetworkLib
+	url = https://github.com/yaetoti/NetworkLib.git

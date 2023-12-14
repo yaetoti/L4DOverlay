@@ -156,6 +156,17 @@
     <ClInclude Include="UdpClient.h" />
     <ClInclude Include="VecUtils.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CommonLib\CommonLib.vcxproj">
+      <Project>{62c9e01c-97fc-48a6-9f8b-eac24be1dc4d}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\ConsoleLib\ConsoleLib.vcxproj">
+      <Project>{025a1406-606d-4a21-9700-53cf7f4641bf}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\NetworkLib\NetworkLib.vcxproj">
+      <Project>{02fb4a0a-0e7b-45f7-9168-880526e9dbe9}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

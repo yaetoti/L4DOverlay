@@ -337,7 +337,7 @@ public:
 		for (const auto& player : m_playerList) {
 			Console::GetInstance()->PrintF("  - ChunkIndex: %llu\n", (int64_t)player->m_index);
 			Console::GetInstance()->PrintF("  - Name: %s\n", player->m_name.c_str());
-			Console::GetInstance()->PrintF("  - Score: %llu\n", (int64_t)player->m_score);
+			Console::GetInstance()->PrintF("  - Score: %lld\n", (int64_t)player->m_score);
 
 			auto duration = std::chrono::duration<float>(player->m_duration);
 			auto hours = std::chrono::duration_cast<std::chrono::hours>(duration);

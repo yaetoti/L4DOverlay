@@ -16,7 +16,7 @@
 
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
     HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption, nullptr, 0);
-    SetProcessDpiAwareness(PROCESS_DPI_UNAWARE);
+    SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
         Console::GetInstance()->WPrintF(L"[ERROR]: CoInitializeEx() failed\n");

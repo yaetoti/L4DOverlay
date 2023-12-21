@@ -5,7 +5,6 @@
 class UiComponent {
 public:
     explicit UiComponent(ID2D1RenderTarget* target);
-
     virtual ~UiComponent();
 
     UiComponent(const UiComponent& other) = delete;
@@ -14,7 +13,6 @@ public:
     UiComponent& operator=(UiComponent&& other) = delete;
 
     virtual HRESULT Initialize() = 0;
-
     virtual void Render() const = 0;
     virtual void Update() = 0;
 

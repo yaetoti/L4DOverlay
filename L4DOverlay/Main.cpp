@@ -14,9 +14,47 @@
 
 #include "OverlayWindow.h"
 
+#include "LowLevelInputHandler.h"
+#include <thread>
+
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
     HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption, nullptr, 0);
     SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+
+    Console::GetInstance()->WPrintF(L"Start!\n");
+
+    LowLevelInputHandler::GetInstance()->Start();
+    const auto& cancelListener = LowLevelInputHandler::GetInstance()->AddKeyboardCancelListener([](const auto& event) {
+        return event.GetInfo().vkCode == 0x57;
+    });
+    LowLevelInputHandler::GetInstance()->AddKeyboardListener([](const auto& event) {
+        switch (event.GetId()) {
+        case WM_KEYDOWN:
+            Console::GetInstance()->WPrintF(L"Pressed [0x%X]\n", event.GetInfo().vkCode);
+            break;
+        case WM_KEYUP:
+            Console::GetInstance()->WPrintF(L"Released [0x%X]\n", event.GetInfo().vkCode);
+            break;
+        case WM_SYSKEYDOWN:
+            Console::GetInstance()->WPrintF(L"System key pressed [0x%X]\n", event.GetInfo().vkCode);
+            break;
+        case WM_SYSKEYUP:
+            Console::GetInstance()->WPrintF(L"System key released [0x%X]\n", event.GetInfo().vkCode);
+            break;
+        default: break;
+        }
+    });
+
+    Console::GetInstance()->WPrintF(L"Sleeping for 5 seconds!\n");
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    Console::GetInstance()->WPrintF(L"Dispatching...\n");
+
+    LowLevelInputHandler::GetInstance()->Dispatch();
+    LowLevelInputHandler::GetInstance()->RemoveKeyboardCancelListener(cancelListener);
+
+    Console::GetInstance()->WPrintF(L"Dispatched!\n");
+    Console::GetInstance()->Pause();
+    return 0;
 
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
         Console::GetInstance()->WPrintF(L"[ERROR]: CoInitializeEx() failed\n");
@@ -31,7 +69,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 }
 
 // Algorithm:
-// - Initialize COM, DirectComposition, Direct3D, Direct2D
+// - Start COM, DirectComposition, Direct3D, Direct2D
 // - Run program in background
 // - If user press [TAB] -> Make async request to the server
 // - Calculate position and sizes

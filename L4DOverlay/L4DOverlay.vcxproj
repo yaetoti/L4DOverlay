@@ -149,7 +149,10 @@
   <ItemGroup>
     <ClCompile Include="GlareComponent.cpp" />
     <ClCompile Include="GraphicsHelper.cpp" />
+    <ClCompile Include="LowLevelInputHandler.cpp" />
+    <ClCompile Include="LowLevelKeyboardEvent.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="OverlayPanel.cpp" />
     <ClCompile Include="OverlayWindow.cpp" />
     <ClCompile Include="TransformStack.cpp" />
     <ClCompile Include="UdpClient.cpp" />
@@ -158,6 +161,10 @@
   <ItemGroup>
     <ClInclude Include="GlareComponent.h" />
     <ClInclude Include="GraphicsHelper.h" />
+    <ClInclude Include="LowLevelEvent.h" />
+    <ClInclude Include="LowLevelInputHandler.h" />
+    <ClInclude Include="LowLevelKeyboardEvent.h" />
+    <ClInclude Include="OverlayPanel.h" />
     <ClInclude Include="OverlayWindow.h" />
     <ClInclude Include="Packets.h" />
     <ClInclude Include="Protocol.h" />

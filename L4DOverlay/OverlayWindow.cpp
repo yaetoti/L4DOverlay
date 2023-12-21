@@ -32,7 +32,7 @@ HRESULT OverlayWindow::CreateDeviceResources() {
                 nullptr,
                 D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 d3dFeatures,
-                static_cast<int>(std::size(d3dFeatures)),
+                std::size(d3dFeatures),
                 D3D11_SDK_VERSION,
                 m_d3dDevice.GetAddressOf(),
                 nullptr,
@@ -156,6 +156,8 @@ void OverlayWindow::DiscardDeviceIndependentResources() {
     m_dxgiFactory.Reset();
 }
 
+#include <functional>
+
 int OverlayWindow::Run() {
 	// Initialize resources
 
@@ -278,14 +280,16 @@ void OverlayWindow::OnRender() {
     float MapHeight = 165.0f;
     float MapX = 24.0f;
     float MapY = 56.0;
-    D2D1_RECT_F MapRect = D2D1::RectF(OverlayX + MapX, OverlayY + MapY, OverlayX + MapX + MapWidth, OverlayY + MapY + MapHeight);
 
     float MapFrameStroke = 4.0f;
+
+    D2D1_RECT_F MapRect = D2D1::RectF(OverlayX + MapX, OverlayY + MapY, OverlayX + MapX + MapWidth, OverlayY + MapY + MapHeight);
     D2D1_RECT_F MapFrameRect = D2D1::RectF(
         OverlayX + MapX - MapFrameStroke * 2.7f,
         OverlayY + MapY - MapFrameStroke * 2.7f,
         OverlayX + MapX + MapWidth + MapFrameStroke * 2.7f,
-        OverlayY + MapY + MapHeight + MapFrameStroke * 2.7f);
+        OverlayY + MapY + MapHeight + MapFrameStroke * 2.7f
+    );
 
     // Gradients
     ComPtr<ID2D1GradientStopCollection> overlayBaseGradientStop;
@@ -420,9 +424,9 @@ void OverlayWindow::OnRender() {
     stack.Rotate(-30.0f);
     stack.Translate(150.0f, 450.0f);
     glare1.Render();
-    stack.Translate(100.0f, 0.0f);
+    stack.Translate(160.0f, 0.0f);
     glare2.Render();
-    stack.Translate(150.0f, 0.0f);
+    stack.Translate(80.0f, 0.0f);
     glare3.Render();
     stack.Reset();
 

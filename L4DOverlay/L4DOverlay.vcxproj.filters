@@ -19,6 +19,12 @@
     <Filter Include="Source Files\Components">
       <UniqueIdentifier>{a11a8356-b5fc-4591-a595-b6c84d0085e6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Event System">
+      <UniqueIdentifier>{c59a3cd0-f460-4c7c-b5d0-cd582a7a7223}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Event System">
+      <UniqueIdentifier>{464df44f-3838-4f98-b78d-eb3fa8d4195a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -36,11 +42,20 @@
     <ClCompile Include="GlareComponent.cpp">
       <Filter>Source Files\Components</Filter>
     </ClCompile>
-    <ClCompile Include="UiComponent.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="TransformStack.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UiComponent.cpp">
+      <Filter>Source Files\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="OverlayPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="LowLevelInputHandler.cpp">
+      <Filter>Source Files\Event System</Filter>
+    </ClCompile>
+    <ClCompile Include="LowLevelKeyboardEvent.cpp">
+      <Filter>Source Files\Event System</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -65,11 +80,23 @@
     <ClInclude Include="GlareComponent.h">
       <Filter>Header Files\Components</Filter>
     </ClInclude>
-    <ClInclude Include="UiComponent.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="TransformStack.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UiComponent.h">
+      <Filter>Header Files\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="OverlayPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LowLevelInputHandler.h">
+      <Filter>Header Files\Event System</Filter>
+    </ClInclude>
+    <ClInclude Include="LowLevelEvent.h">
+      <Filter>Header Files\Event System</Filter>
+    </ClInclude>
+    <ClInclude Include="LowLevelKeyboardEvent.h">
+      <Filter>Header Files\Event System</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

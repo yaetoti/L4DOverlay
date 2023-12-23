@@ -89,10 +89,25 @@ private:
 	OverlayState m_overlayState;
 	std::unique_ptr<S2CInfoPacket> m_serverInfo;
 	std::unique_ptr<S2CPlayerPacket> m_playerInfo;
+	std::atomic<bool> m_isDataPresent;
 	std::atomic<bool> m_isDataValid;
 	std::atomic<bool> m_isConnecting;
 	std::atomic<bool> m_isConnectionError;
+	std::atomic<bool> m_isCancelled;
 	std::future<void> m_connectionFuture;
+	uint32_t m_networkTimeout = 5000;
+	uint32_t m_cancelTimeout = 10;
+	const std::wstring m_serverIp = L"46.174.48.86";
+	const std::wstring m_serverPort = L"27015";
+	static constexpr int m_receiveBufferSize = 4096;
+
+	// Helper network functions
+	bool ResolveServerAddress(const wchar_t* ip, const wchar_t* port, uint32_t connectTimeout, ADDRINFOEXW* serverAddress) const;
+	int ReceiveSomeFrom(SOCKET socket, char* buffer, int length, const sockaddr& receiveAddress, int addressLength) const;
+	bool SendAllTo(SOCKET socket, char* buffer, int length, const sockaddr& sendAddress, int addressLength) const;
+	std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const sockaddr& receiveAddress, int addressLength) const;
+	bool SendPacket(SOCKET socket, const Packet<SsqPacketType>& packet, const sockaddr& sendAddress, int addressLength) const;
+
 
 	HRESULT CreateDeviceResources();
 	HRESULT CreateDeviceIndependentResources();

@@ -38,7 +38,7 @@ HRESULT OverlayWindow::CreateDeviceResources() {
                 nullptr,
                 D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 d3dFeatures,
-                std::size(d3dFeatures),
+                static_cast<UINT>(std::size(d3dFeatures)),
                 D3D11_SDK_VERSION,
                 m_d3dDevice.GetAddressOf(),
                 nullptr,
@@ -256,37 +256,159 @@ int OverlayWindow::Run() {
     }
 }
 
-static bool SendPacket(SOCKET socket, const Packet<SsqPacketType>& packet, const sockaddr* sendAddress, int length) {
-    std::vector<uint8_t> buffer;
-    ByteBuffer wrapper(buffer);
-    int sent = 0;
+bool OverlayWindow::ResolveServerAddress(const wchar_t* ip, const wchar_t* port, uint32_t connectTimeout, ADDRINFOEXW* serverAddress) const {
+    ADDRINFOEXW* info;
+    OVERLAPPED overlapped = { };
+    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
+    overlapped.hEvent = event.Get();
+    if (nullptr == event.Get()) {
+        return false;
+    }
 
-    wrapper.Put(HeaderType::HEADER_SIMPLE);
-    wrapper.Put(packet.GetType());
-    packet.Serialize(wrapper);
-    do {
-        int status = sendto(socket, std::bit_cast<const char*>(buffer.data() + sent), static_cast<int>(buffer.size()) - sent, 0, sendAddress, length);
-        if (SOCKET_ERROR == sent) {
+    const uint32_t timeoutSeconds = connectTimeout / 1000;
+    const uint32_t timeoutMillis = connectTimeout - timeoutSeconds * 1000;
+    timeval timeout = { static_cast<long>(timeoutSeconds), static_cast<long>(timeoutMillis) };
+    HANDLE cancelHandle;
+
+    if (0 != GetAddrInfoExW(ip, port, NS_DNS, nullptr, nullptr, &info, &timeout, &overlapped, nullptr, &cancelHandle)) {
+        if (WSA_IO_PENDING != WSAGetLastError()) {
+            // Function failed to get ip
             return false;
         }
-        sent += status;
-    } while (sent < static_cast<int>(buffer.size()));
-    wrapper.Clear();
+
+        while (true) {
+            const DWORD status = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
+            if (WAIT_FAILED == status) {
+                // Function failed to get ip
+                return false;
+            }
+            if (WAIT_TIMEOUT == status && m_isCancelled) {
+                // If function isn't completed but the request is cancelled
+                GetAddrInfoExCancel(&cancelHandle);
+                return false;
+            }
+            if (WAIT_OBJECT_0 == status) {
+                // Function completed
+                break;
+            }
+        }
+    }
+
+    // Take the first available ip
+    *serverAddress = *info;
+    FreeAddrInfoExW(info);
     return true;
 }
 
-static int ReceiveSomeFrom(SOCKET socket, char* buffer, int length, const sockaddr& receiveAddress) {
-    sockaddr address;
-    int addressLength = sizeof(address);
-    int status = recvfrom(socket, buffer, length, 0, &address, &addressLength);
-    if (0 != std::memcmp(&address, &receiveAddress, addressLength)) {
+int OverlayWindow::ReceiveSomeFrom(SOCKET socket, char* buffer, int length, const sockaddr& receiveAddress, int addressLength) const {
+    WSABUF descriptor { static_cast<ULONG>(length), buffer };
+    OVERLAPPED overlapped = { };
+    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
+    overlapped.hEvent = event.Get();
+    if (nullptr == event.Get()) {
+        return SOCKET_ERROR;
+    }
+
+    sockaddr_in address = { 0 };
+    int receiveAddressLength = sizeof(address);
+
+    DWORD received = 0;
+    int status = WSARecvFrom(socket, &descriptor, 1, &received, nullptr, reinterpret_cast<sockaddr*>(&address), &receiveAddressLength, &overlapped, nullptr);
+    if (0 != status) {
+        if (WSA_IO_PENDING != WSAGetLastError()) {
+            // Function failed to receive data
+            return false;
+        }
+
+        while (true) {
+            const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
+            if (WAIT_FAILED == waitStatus) {
+                // Function failed to receive data
+                return false;
+            }
+            if (WAIT_TIMEOUT == waitStatus && m_isCancelled) {
+                // If function isn't completed but the request is cancelled
+                return false;
+            }
+            if (WAIT_OBJECT_0 == waitStatus) {
+                // Function completed
+                DWORD flags;
+                if (!WSAGetOverlappedResult(socket, &overlapped, &received, FALSE, &flags)) {
+                    return false;
+                }
+
+                break;
+            }
+        }
+    }
+
+    if (receiveAddressLength != addressLength || 0 != std::memcmp(&address, &receiveAddress, receiveAddressLength)) {
+        // Wrong address
         status = -2;
     }
 
     return status;
 }
 
-static std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const sockaddr& receiveAddress) {
+bool OverlayWindow::SendAllTo(SOCKET socket, char* buffer, int length, const sockaddr& sendAddress, int addressLength) const {
+    WSABUF descriptor { static_cast<ULONG>(length), buffer };
+    OVERLAPPED overlapped = { };
+    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
+    overlapped.hEvent = event.Get();
+    if (nullptr == event.Get()) {
+        Console::GetInstance()->WPrintF(L"FAIL #3.1\n"); // TODO DEBUG
+        return false;
+    }
+
+    DWORD sent = 0;
+    int status = WSASendTo(socket, &descriptor, 1, &sent, 0, &sendAddress, addressLength, &overlapped, nullptr);
+    if (0 != status) {
+        if (WSA_IO_PENDING != WSAGetLastError()) {
+            // Function failed to send data
+            Console::GetInstance()->WPrintF(L"FAIL #3.2\n"); // TODO DEBUG
+            return false;
+        }
+
+        while (true) {
+            const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
+            if (WAIT_FAILED == waitStatus) {
+                // Function failed to send data
+                Console::GetInstance()->WPrintF(L"FAIL #3.3\n"); // TODO DEBUG
+                return false;
+            }
+            if (WAIT_TIMEOUT == waitStatus && m_isCancelled) {
+                // If function isn't completed but the request is cancelled
+                Console::GetInstance()->WPrintF(L"FAIL #3.4\n"); // TODO DEBUG
+                return false;
+            }
+            if (WAIT_OBJECT_0 == waitStatus) {
+                // Function completed
+                DWORD flags;
+                if (!WSAGetOverlappedResult(socket, &overlapped, &sent, FALSE, &flags)) {
+                    Console::GetInstance()->WPrintF(L"FAIL #3.5\n"); // TODO DEBUG
+                    return false;
+                }
+
+                break;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool OverlayWindow::SendPacket(SOCKET socket, const Packet<SsqPacketType>& packet, const sockaddr& sendAddress, int addressLength) const {
+    std::vector<uint8_t> buffer;
+    ByteBuffer wrapper(buffer);
+
+    wrapper.Put(HeaderType::HEADER_SIMPLE);
+    wrapper.Put(packet.GetType());
+    packet.Serialize(wrapper);
+
+    return SendAllTo(socket, std::bit_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), sendAddress, addressLength);
+}
+
+std::unique_ptr<Packet<SsqPacketType>> OverlayWindow::ReceivePacket(SOCKET socket, const sockaddr& receiveAddress, int addressLength) const {
     std::vector<uint8_t> data;
     HeaderType headerType;
     SsqPacketType packetType;
@@ -294,8 +416,8 @@ static std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const
     while (true) {
         try {
             // Receive some data
-            char buffer[4096];
-            int status = ReceiveSomeFrom(socket, buffer, 4096, receiveAddress);
+            char buffer[m_receiveBufferSize];
+            const int status = ReceiveSomeFrom(socket, buffer, m_receiveBufferSize, receiveAddress, addressLength);
             if (SOCKET_ERROR == status) {
                 return nullptr;
             }
@@ -305,6 +427,7 @@ static std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const
             }
 
             data.insert(data.end(), buffer, buffer + status);
+
             // Parse header
             ByteBuffer wrapper(data);
             wrapper.Get(headerType);
@@ -312,7 +435,9 @@ static std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const
                 // Unsupported header
                 return nullptr;
             }
+
             wrapper.Get(packetType);
+
             // Parse packet
             switch (packetType) {
             case SsqPacketType::S2C_CHALLENGE:
@@ -350,28 +475,27 @@ void OverlayWindow::FetchData() {
     m_connectionFuture = std::async(std::launch::async, [this] {
         ScopedHandle<SOCKET> serverSocket(
             INVALID_SOCKET,
-            socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
+            WSASocketW(AF_INET, SOCK_DGRAM, IPPROTO_UDP, nullptr, 0, WSA_FLAG_OVERLAPPED),
             closesocket
         );
         if (INVALID_SOCKET == serverSocket.Get()) {
             m_isConnectionError = true;
             m_isConnecting = false;
+            Console::GetInstance()->WPrintF(L"FAIL #1\n"); // TODO DEBUG
             return;
         }
 
         // Set timeout
-        DWORD timeout = 5000;
+        DWORD timeout = m_networkTimeout;
         setsockopt(serverSocket.Get(), SOL_SOCKET, SO_SNDTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
         setsockopt(serverSocket.Get(), SOL_SOCKET, SO_RCVTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
 
-        // TODO: Server IP
-        ADDRINFOEXW serverAddress;
-        if (!ResolveAddressEx(L"46.174.48.81", L"27015", { 5, 0 }, [&serverAddress](const ADDRINFOEXW* address) {
-            serverAddress = *address;
-            return true;
-        })) {
+        // Resolve server address
+        ADDRINFOEXW serverAddress = { };
+        if (!ResolveServerAddress(m_serverIp.c_str(), m_serverPort.c_str(), m_networkTimeout, &serverAddress)) {
             m_isConnectionError = true;
             m_isConnecting = false;
+            Console::GetInstance()->WPrintF(L"FAIL #2\n"); // TODO DEBUG
             return;
         }
 
@@ -382,20 +506,27 @@ void OverlayWindow::FetchData() {
 
         // Retrieving server info
         while (true) {
-            if (!SendPacket(serverSocket.Get(), A2SInfoPacket(challenge), serverAddress.ai_addr, serverAddress.ai_addrlen)) {
+            if (!SendPacket(serverSocket.Get(), A2SInfoPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #3\n"); // TODO DEBUG
                 return;
             }
 
-            infoPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr);
+            Console::GetInstance()->WPrintF(L"FLOW #1\n"); // TODO DEBUG
+
+            infoPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen));
             if (!infoPacket) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #4\n"); // TODO DEBUG
                 return;
             }
 
+            Console::GetInstance()->WPrintF(L"FLOW #2\n"); // TODO DEBUG
+
             if (SsqPacketType::S2C_CHALLENGE == infoPacket->GetType()) {
+                // Repeat with received challenge number
                 challenge = reinterpret_cast<S2CChallengePacket*>(infoPacket.get())->GetChallenge();
                 continue;
             }
@@ -403,6 +534,7 @@ void OverlayWindow::FetchData() {
                 // Unexpected answer
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #5\n"); // TODO DEBUG
                 return;
             }
 
@@ -410,20 +542,23 @@ void OverlayWindow::FetchData() {
         }
         // Retrieving players info
         while (true) {
-            if (!SendPacket(serverSocket.Get(), A2SPlayerPacket(challenge), serverAddress.ai_addr, serverAddress.ai_addrlen)) {
+            if (!SendPacket(serverSocket.Get(), A2SPlayerPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #6\n"); // TODO DEBUG
                 return;
             }
 
-            playersPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr);
+            playersPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen));
             if (!playersPacket) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #7\n"); // TODO DEBUG
                 return;
             }
 
             if (SsqPacketType::S2C_CHALLENGE == playersPacket->GetType()) {
+                // Repeat with received challenge number
                 challenge = reinterpret_cast<S2CChallengePacket*>(playersPacket.get())->GetChallenge();
                 continue;
             }
@@ -431,11 +566,13 @@ void OverlayWindow::FetchData() {
                 // Unexpected answer
                 m_isConnectionError = true;
                 m_isConnecting = false;
+                Console::GetInstance()->WPrintF(L"FAIL #8\n"); // TODO DEBUG
                 return;
             }
 
             break;
         }
+
         // Packets received
         // TODO Ugly. Implement move semantic
         m_serverInfo = std::make_unique<S2CInfoPacket>(reinterpret_cast<S2CInfoPacket&>(*infoPacket));

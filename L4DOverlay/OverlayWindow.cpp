@@ -1,3 +1,5 @@
+#define WIN32_LEAN_AND_MEAN
+
 #include "OverlayWindow.h"
 
 #include <ConsoleLib/Console.h>
@@ -6,6 +8,8 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
+#include "LowLevelInputHandler.h"
+
 OverlayWindow::OverlayWindow() {
 
 }
@@ -13,6 +17,8 @@ OverlayWindow::OverlayWindow() {
 OverlayWindow::~OverlayWindow() {
     DiscardDeviceResources();
     DiscardDeviceIndependentResources();
+
+    UnregisterClassW(kClassName, GetModuleHandleW(nullptr));
 }
 
 HRESULT OverlayWindow::CreateDeviceResources() {
@@ -156,12 +162,9 @@ void OverlayWindow::DiscardDeviceIndependentResources() {
     m_dxgiFactory.Reset();
 }
 
-#include <functional>
-
 int OverlayWindow::Run() {
 	// Initialize resources
-
-    WNDCLASSEX wc = { 0 };
+    WNDCLASSEX wc = { };
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = WndProc;
@@ -170,12 +173,11 @@ int OverlayWindow::Run() {
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), IDI_APPLICATION);
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     wc.lpszMenuName = nullptr;
     wc.lpszClassName = kClassName;
     wc.hIconSm = LoadIconW(wc.hInstance, IDI_APPLICATION);
     if (0 == RegisterClassExW(&wc)) {
-        // TODO error
         MessageBoxW(nullptr, L"Window Registration Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return 0;
     }
@@ -196,50 +198,284 @@ int OverlayWindow::Run() {
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr
     );
     if (nullptr == m_hWnd) {
-        // TODO error
         MessageBoxW(nullptr, L"Window Creation Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return 0;
     }
 
-    // TODO: DPI scaling
-    // DPI scaling
-    UINT dpi = GetDpiForWindow(m_hWnd);
-
-    // DX initialization
-    HRESULT status;
-
-    status = CreateDeviceIndependentResources();
+    // DirectX initialization
+    HRESULT status = CreateDeviceIndependentResources();
     if (FAILED(status)) {
-        // TODO error
         MessageBoxW(nullptr, L"CreateDeviceIndependentResources() failed", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return 0;
     }
     status = CreateDeviceResources();
     if (FAILED(status)) {
-        // TODO error
         MessageBoxW(nullptr, L"CreateDeviceResources() failed", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return 0;
     }
 
-	// Main loop
     ShowWindow(m_hWnd, SW_SHOW);
     UpdateWindow(m_hWnd);
 
-    MSG msg;
-    while (true) {
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                return static_cast<int>(msg.wParam);
-            }
-
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+    // Add input listeners
+    LowLevelInputHandler::GetInstance()->AddKeyboardListener([this](const LowLevelKeyboardEvent& event) {
+        if (event.GetInfo().vkCode != VK_TAB) {
+            return;
         }
 
+        if (OverlayState::HIDDEN == m_overlayState && WM_KEYDOWN == event.GetId()) {
+            m_overlayState = OverlayState::SHOWING;
+            return;
+        }
+        if (OverlayState::HIDDEN != m_overlayState && WM_KEYUP == event.GetId()) {
+            m_overlayState = OverlayState::HIDING;
+            return;
+        }
+    });
+    LowLevelInputHandler::GetInstance()->AddKeyboardCancelListener([this](const LowLevelKeyboardEvent& event) {
+        return VK_TAB == event.GetInfo().vkCode && (WM_KEYDOWN == event.GetId() || WM_KEYUP == event.GetId());
+    });
+    LowLevelInputHandler::GetInstance()->Start();
+
+    // Main loop
+    MSG message;
+    while (true) {
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.message == WM_QUIT) {
+                LowLevelInputHandler::GetInstance()->Stop();
+                return static_cast<int>(message.wParam);
+            }
+
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+
+        LowLevelInputHandler::GetInstance()->Dispatch();
+        OnUpdate();
         OnRender();
     }
+}
 
-	return 0;
+static bool SendPacket(SOCKET socket, const Packet<SsqPacketType>& packet, const sockaddr* sendAddress, int length) {
+    std::vector<uint8_t> buffer;
+    ByteBuffer wrapper(buffer);
+    int sent = 0;
+
+    wrapper.Put(HeaderType::HEADER_SIMPLE);
+    wrapper.Put(packet.GetType());
+    packet.Serialize(wrapper);
+    do {
+        int status = sendto(socket, std::bit_cast<const char*>(buffer.data() + sent), static_cast<int>(buffer.size()) - sent, 0, sendAddress, length);
+        if (SOCKET_ERROR == sent) {
+            return false;
+        }
+        sent += status;
+    } while (sent < static_cast<int>(buffer.size()));
+    wrapper.Clear();
+    return true;
+}
+
+static int ReceiveSomeFrom(SOCKET socket, char* buffer, int length, const sockaddr& receiveAddress) {
+    sockaddr address;
+    int addressLength = sizeof(address);
+    int status = recvfrom(socket, buffer, length, 0, &address, &addressLength);
+    if (0 != std::memcmp(&address, &receiveAddress, addressLength)) {
+        status = -2;
+    }
+
+    return status;
+}
+
+static std::unique_ptr<Packet<SsqPacketType>> ReceivePacket(SOCKET socket, const sockaddr& receiveAddress) {
+    std::vector<uint8_t> data;
+    HeaderType headerType;
+    SsqPacketType packetType;
+
+    while (true) {
+        try {
+            // Receive some data
+            char buffer[4096];
+            int status = ReceiveSomeFrom(socket, buffer, 4096, receiveAddress);
+            if (SOCKET_ERROR == status) {
+                return nullptr;
+            }
+            if (-2 == status) {
+                // Skip data from unexpected address
+                continue;
+            }
+
+            data.insert(data.end(), buffer, buffer + status);
+            // Parse header
+            ByteBuffer wrapper(data);
+            wrapper.Get(headerType);
+            if (HeaderType::HEADER_SIMPLE != headerType) {
+                // Unsupported header
+                return nullptr;
+            }
+            wrapper.Get(packetType);
+            // Parse packet
+            switch (packetType) {
+            case SsqPacketType::S2C_CHALLENGE:
+            {
+                S2CChallengePacket packet;
+                packet.Deserialize(wrapper);
+                return std::make_unique<S2CChallengePacket>(packet);
+            }
+            case SsqPacketType::S2C_PLAYER:
+            {
+                S2CPlayerPacket packet;
+                packet.Deserialize(wrapper);
+                return std::make_unique<S2CPlayerPacket>(packet);
+            }
+            case SsqPacketType::S2C_INFO:
+            {
+                S2CInfoPacket packet;
+                packet.Deserialize(wrapper);
+                return std::make_unique<S2CInfoPacket>(packet);
+            }
+            default:
+                // Unexpected answer
+                return nullptr;
+            }
+        }
+        catch(const std::out_of_range&) {
+            // If not enough to parse - repeat
+            continue;
+        }
+    }
+}
+
+void OverlayWindow::FetchData() {
+    m_isConnecting = true;
+    m_connectionFuture = std::async(std::launch::async, [this] {
+        ScopedHandle<SOCKET> serverSocket(
+            INVALID_SOCKET,
+            socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
+            closesocket
+        );
+        if (INVALID_SOCKET == serverSocket.Get()) {
+            m_isConnectionError = true;
+            m_isConnecting = false;
+            return;
+        }
+
+        // Set timeout
+        DWORD timeout = 5000;
+        setsockopt(serverSocket.Get(), SOL_SOCKET, SO_SNDTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
+        setsockopt(serverSocket.Get(), SOL_SOCKET, SO_RCVTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
+
+        // TODO: Server IP
+        ADDRINFOEXW serverAddress;
+        if (!ResolveAddressEx(L"46.174.48.81", L"27015", { 5, 0 }, [&serverAddress](const ADDRINFOEXW* address) {
+            serverAddress = *address;
+            return true;
+        })) {
+            m_isConnectionError = true;
+            m_isConnecting = false;
+            return;
+        }
+
+        // Variables
+        std::unique_ptr<Packet<SsqPacketType>> infoPacket;
+        std::unique_ptr<Packet<SsqPacketType>> playersPacket;
+        int challenge = -1;
+
+        // Retrieving server info
+        while (true) {
+            if (!SendPacket(serverSocket.Get(), A2SInfoPacket(challenge), serverAddress.ai_addr, serverAddress.ai_addrlen)) {
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            infoPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr);
+            if (!infoPacket) {
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            if (SsqPacketType::S2C_CHALLENGE == infoPacket->GetType()) {
+                challenge = reinterpret_cast<S2CChallengePacket*>(infoPacket.get())->GetChallenge();
+                continue;
+            }
+            if (SsqPacketType::S2C_INFO != infoPacket->GetType()) {
+                // Unexpected answer
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            break;
+        }
+        // Retrieving players info
+        while (true) {
+            if (!SendPacket(serverSocket.Get(), A2SPlayerPacket(challenge), serverAddress.ai_addr, serverAddress.ai_addrlen)) {
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            playersPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr);
+            if (!playersPacket) {
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            if (SsqPacketType::S2C_CHALLENGE == playersPacket->GetType()) {
+                challenge = reinterpret_cast<S2CChallengePacket*>(playersPacket.get())->GetChallenge();
+                continue;
+            }
+            if (SsqPacketType::S2C_PLAYER != playersPacket->GetType()) {
+                // Unexpected answer
+                m_isConnectionError = true;
+                m_isConnecting = false;
+                return;
+            }
+
+            break;
+        }
+        // Packets received
+        // TODO Ugly. Implement move semantic
+        m_serverInfo = std::make_unique<S2CInfoPacket>(reinterpret_cast<S2CInfoPacket&>(*infoPacket));
+        m_playerInfo = std::make_unique<S2CPlayerPacket>(reinterpret_cast<S2CPlayerPacket&>(*playersPacket));
+        m_isDataValid = true;
+        m_isConnecting = false;
+    });
+}
+
+void OverlayWindow::OnUpdate() {
+    if (OverlayState::HIDDEN != m_overlayState && !m_isDataValid && !m_isConnecting && !m_isConnectionError) {
+        Console::GetInstance()->WPrintF(L"Loading data\n");
+        FetchData();
+    }
+
+    if (m_isConnecting) {
+        Console::GetInstance()->WPrintF(L"Connecting\n");
+    }
+
+    if (!m_isConnecting) {
+        if (m_isConnectionError) {
+            Console::GetInstance()->WPrintF(L"Error\n");
+        }
+
+        if (m_isDataValid) {
+            Console::GetInstance()->WPrintF(L"Data valid\n");
+        }
+    }
+
+    switch (m_overlayState) {
+    case OverlayState::HIDDEN:
+        break;
+    case OverlayState::SHOWING:
+
+        break;
+    case OverlayState::SHOWN:
+        break;
+    case OverlayState::HIDING:
+        break;
+    }
 }
 
 void OverlayWindow::OnRender() {

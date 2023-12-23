@@ -147,6 +147,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="A2SInfoPacket.cpp" />
+    <ClCompile Include="A2SPlayerPacket.cpp" />
+    <ClCompile Include="EasingFunctions.cpp" />
     <ClCompile Include="GlareComponent.cpp" />
     <ClCompile Include="GraphicsHelper.cpp" />
     <ClCompile Include="LowLevelInputHandler.cpp" />
@@ -154,11 +157,17 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="OverlayPanel.cpp" />
     <ClCompile Include="OverlayWindow.cpp" />
+    <ClCompile Include="S2CChallengePacket.cpp" />
+    <ClCompile Include="S2CInfoPacket.cpp" />
+    <ClCompile Include="S2CPlayerPacket.cpp" />
     <ClCompile Include="TransformStack.cpp" />
     <ClCompile Include="UdpClient.cpp" />
     <ClCompile Include="UiComponent.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="A2SInfoPacket.h" />
+    <ClInclude Include="A2SPlayerPacket.h" />
+    <ClInclude Include="EasingFunctions.h" />
     <ClInclude Include="GlareComponent.h" />
     <ClInclude Include="GraphicsHelper.h" />
     <ClInclude Include="LowLevelEvent.h" />
@@ -166,8 +175,10 @@
     <ClInclude Include="LowLevelKeyboardEvent.h" />
     <ClInclude Include="OverlayPanel.h" />
     <ClInclude Include="OverlayWindow.h" />
-    <ClInclude Include="Packets.h" />
+    <ClInclude Include="S2CPlayerPacket.h" />
     <ClInclude Include="Protocol.h" />
+    <ClInclude Include="S2CChallengePacket.h" />
+    <ClInclude Include="S2CInfoPacket.h" />
     <ClInclude Include="TransformStack.h" />
     <ClInclude Include="UdpClient.h" />
     <ClInclude Include="UiComponent.h" />

@@ -13,12 +13,41 @@
 #include <d2d1effects.h>
 #include <d2d1effects_2.h>
 #include <dcomp.h>
+#include <memory>
 #include <wincodec.h>
 
 #include "GlareComponent.h"
 #include "TransformStack.h"
 
+// Last
+
+#include <atomic>
+#include <future>
+#include <vector>
+#include <CommonLib/ScopedHandle.h>
+#include <NetworkLib/Utils.h>
+#include "A2SInfoPacket.h"
+#include "A2SPlayerPacket.h"
+#include "S2CChallengePacket.h"
+#include "S2CInfoPacket.h"
+#include "S2CPlayerPacket.h"
+
 using Microsoft::WRL::ComPtr; // TODO remove
+
+//class Timer final {
+//public:
+//    Timer() = default;
+//
+//private:
+//	
+//};
+
+enum class OverlayState {
+    HIDDEN,
+	SHOWING,
+	SHOWN,
+	HIDING,
+};
 
 class OverlayWindow final {
 public:
@@ -55,15 +84,26 @@ private:
 
 	// Rendering
 	ComPtr<ID2D1Bitmap> m_d2dMapBitmap;
-	
+
+	// Logic
+	OverlayState m_overlayState;
+	std::unique_ptr<S2CInfoPacket> m_serverInfo;
+	std::unique_ptr<S2CPlayerPacket> m_playerInfo;
+	std::atomic<bool> m_isDataValid;
+	std::atomic<bool> m_isConnecting;
+	std::atomic<bool> m_isConnectionError;
+	std::future<void> m_connectionFuture;
 
 	HRESULT CreateDeviceResources();
 	HRESULT CreateDeviceIndependentResources();
 	void DiscardDeviceResources();
 	void DiscardDeviceIndependentResources();
 
+	void OnUpdate();
 	void OnRender();
 	void OnResize();
+
+	void FetchData();
 
 	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 };

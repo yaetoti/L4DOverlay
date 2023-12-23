@@ -25,6 +25,12 @@
     <Filter Include="Source Files\Event System">
       <UniqueIdentifier>{464df44f-3838-4f98-b78d-eb3fa8d4195a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Packets">
+      <UniqueIdentifier>{82961689-c2e9-48d7-a3c4-3e7e0614bcd0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Packets">
+      <UniqueIdentifier>{4232b1f4-55e9-4d75-9091-e8f7cbf1f0d1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -57,6 +63,24 @@
     <ClCompile Include="LowLevelKeyboardEvent.cpp">
       <Filter>Source Files\Event System</Filter>
     </ClCompile>
+    <ClCompile Include="EasingFunctions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="A2SInfoPacket.cpp">
+      <Filter>Source Files\Packets</Filter>
+    </ClCompile>
+    <ClCompile Include="S2CChallengePacket.cpp">
+      <Filter>Source Files\Packets</Filter>
+    </ClCompile>
+    <ClCompile Include="A2SPlayerPacket.cpp">
+      <Filter>Source Files\Packets</Filter>
+    </ClCompile>
+    <ClCompile Include="S2CInfoPacket.cpp">
+      <Filter>Source Files\Packets</Filter>
+    </ClCompile>
+    <ClCompile Include="S2CPlayerPacket.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="UdpClient.h">
@@ -65,7 +89,7 @@
     <ClInclude Include="Protocol.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Packets.h">
+    <ClInclude Include="S2CPlayerPacket.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="VecUtils.h">
@@ -97,6 +121,21 @@
     </ClInclude>
     <ClInclude Include="LowLevelKeyboardEvent.h">
       <Filter>Header Files\Event System</Filter>
+    </ClInclude>
+    <ClInclude Include="EasingFunctions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="A2SInfoPacket.h">
+      <Filter>Header Files\Packets</Filter>
+    </ClInclude>
+    <ClInclude Include="S2CChallengePacket.h">
+      <Filter>Header Files\Packets</Filter>
+    </ClInclude>
+    <ClInclude Include="A2SPlayerPacket.h">
+      <Filter>Header Files\Packets</Filter>
+    </ClInclude>
+    <ClInclude Include="S2CInfoPacket.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

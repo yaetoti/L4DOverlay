@@ -21,6 +21,7 @@
 
 // Last
 
+#include <WinSock2.h>
 #include <atomic>
 #include <future>
 #include <vector>
@@ -97,6 +98,7 @@ private:
 	std::future<void> m_connectionFuture;
 	uint32_t m_networkTimeout = 5000;
 	uint32_t m_cancelTimeout = 10;
+	// const std::wstring m_serverIp = L"46.174.48.86";
 	const std::wstring m_serverIp = L"46.174.48.86";
 	const std::wstring m_serverPort = L"27015";
 	static constexpr int m_receiveBufferSize = 4096;

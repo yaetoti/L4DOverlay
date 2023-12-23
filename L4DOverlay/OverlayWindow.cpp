@@ -309,34 +309,35 @@ int OverlayWindow::ReceiveSomeFrom(SOCKET socket, char* buffer, int length, cons
         return SOCKET_ERROR;
     }
 
-    sockaddr_in address = { 0 };
+    sockaddr_in address = { };
     int receiveAddressLength = sizeof(address);
 
     DWORD received = 0;
-    int status = WSARecvFrom(socket, &descriptor, 1, &received, nullptr, reinterpret_cast<sockaddr*>(&address), &receiveAddressLength, &overlapped, nullptr);
+    DWORD flags = 0;
+    int status = WSARecvFrom(socket, &descriptor, 1, &received, &flags, reinterpret_cast<sockaddr*>(&address), &receiveAddressLength, &overlapped, nullptr);
     if (0 != status) {
         if (WSA_IO_PENDING != WSAGetLastError()) {
             // Function failed to receive data
-            return false;
+            return SOCKET_ERROR;
         }
 
         while (true) {
             const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
-            if (WAIT_FAILED == waitStatus) {
+            if (WSA_WAIT_FAILED == waitStatus) {
                 // Function failed to receive data
-                return false;
+                return SOCKET_ERROR;
             }
-            if (WAIT_TIMEOUT == waitStatus && m_isCancelled) {
+            if (WSA_WAIT_TIMEOUT == waitStatus && m_isCancelled) {
                 // If function isn't completed but the request is cancelled
-                return false;
+                return SOCKET_ERROR;
             }
-            if (WAIT_OBJECT_0 == waitStatus) {
+            if (WSA_WAIT_EVENT_0 == waitStatus) {
                 // Function completed
-                DWORD flags;
                 if (!WSAGetOverlappedResult(socket, &overlapped, &received, FALSE, &flags)) {
-                    return false;
+                    return SOCKET_ERROR;
                 }
 
+                status = static_cast<int>(received);
                 break;
             }
         }
@@ -356,7 +357,6 @@ bool OverlayWindow::SendAllTo(SOCKET socket, char* buffer, int length, const soc
     ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
     overlapped.hEvent = event.Get();
     if (nullptr == event.Get()) {
-        Console::GetInstance()->WPrintF(L"FAIL #3.1\n"); // TODO DEBUG
         return false;
     }
 
@@ -365,7 +365,6 @@ bool OverlayWindow::SendAllTo(SOCKET socket, char* buffer, int length, const soc
     if (0 != status) {
         if (WSA_IO_PENDING != WSAGetLastError()) {
             // Function failed to send data
-            Console::GetInstance()->WPrintF(L"FAIL #3.2\n"); // TODO DEBUG
             return false;
         }
 
@@ -373,19 +372,16 @@ bool OverlayWindow::SendAllTo(SOCKET socket, char* buffer, int length, const soc
             const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
             if (WAIT_FAILED == waitStatus) {
                 // Function failed to send data
-                Console::GetInstance()->WPrintF(L"FAIL #3.3\n"); // TODO DEBUG
                 return false;
             }
             if (WAIT_TIMEOUT == waitStatus && m_isCancelled) {
                 // If function isn't completed but the request is cancelled
-                Console::GetInstance()->WPrintF(L"FAIL #3.4\n"); // TODO DEBUG
                 return false;
             }
             if (WAIT_OBJECT_0 == waitStatus) {
                 // Function completed
                 DWORD flags;
                 if (!WSAGetOverlappedResult(socket, &overlapped, &sent, FALSE, &flags)) {
-                    Console::GetInstance()->WPrintF(L"FAIL #3.5\n"); // TODO DEBUG
                     return false;
                 }
 
@@ -432,7 +428,7 @@ std::unique_ptr<Packet<SsqPacketType>> OverlayWindow::ReceivePacket(SOCKET socke
             ByteBuffer wrapper(data);
             wrapper.Get(headerType);
             if (HeaderType::HEADER_SIMPLE != headerType) {
-                // Unsupported header
+                // Unsupported headerWSARecvFrom
                 return nullptr;
             }
 
@@ -481,11 +477,10 @@ void OverlayWindow::FetchData() {
         if (INVALID_SOCKET == serverSocket.Get()) {
             m_isConnectionError = true;
             m_isConnecting = false;
-            Console::GetInstance()->WPrintF(L"FAIL #1\n"); // TODO DEBUG
             return;
         }
 
-        // Set timeout
+        // Set timeout (This bullshit doesn't working. Lost 3 days on that)
         DWORD timeout = m_networkTimeout;
         setsockopt(serverSocket.Get(), SOL_SOCKET, SO_SNDTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
         setsockopt(serverSocket.Get(), SOL_SOCKET, SO_RCVTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
@@ -495,7 +490,6 @@ void OverlayWindow::FetchData() {
         if (!ResolveServerAddress(m_serverIp.c_str(), m_serverPort.c_str(), m_networkTimeout, &serverAddress)) {
             m_isConnectionError = true;
             m_isConnecting = false;
-            Console::GetInstance()->WPrintF(L"FAIL #2\n"); // TODO DEBUG
             return;
         }
 
@@ -509,21 +503,15 @@ void OverlayWindow::FetchData() {
             if (!SendPacket(serverSocket.Get(), A2SInfoPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #3\n"); // TODO DEBUG
                 return;
             }
-
-            Console::GetInstance()->WPrintF(L"FLOW #1\n"); // TODO DEBUG
 
             infoPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen));
             if (!infoPacket) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #4\n"); // TODO DEBUG
                 return;
             }
-
-            Console::GetInstance()->WPrintF(L"FLOW #2\n"); // TODO DEBUG
 
             if (SsqPacketType::S2C_CHALLENGE == infoPacket->GetType()) {
                 // Repeat with received challenge number
@@ -534,7 +522,6 @@ void OverlayWindow::FetchData() {
                 // Unexpected answer
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #5\n"); // TODO DEBUG
                 return;
             }
 
@@ -545,7 +532,6 @@ void OverlayWindow::FetchData() {
             if (!SendPacket(serverSocket.Get(), A2SPlayerPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #6\n"); // TODO DEBUG
                 return;
             }
 
@@ -553,7 +539,6 @@ void OverlayWindow::FetchData() {
             if (!playersPacket) {
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #7\n"); // TODO DEBUG
                 return;
             }
 
@@ -566,7 +551,6 @@ void OverlayWindow::FetchData() {
                 // Unexpected answer
                 m_isConnectionError = true;
                 m_isConnecting = false;
-                Console::GetInstance()->WPrintF(L"FAIL #8\n"); // TODO DEBUG
                 return;
             }
 

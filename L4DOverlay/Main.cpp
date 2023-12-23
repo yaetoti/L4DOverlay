@@ -5,6 +5,7 @@
 #include <ConsoleLib/Console.h>
 
 #include "OverlayWindow.h"
+#include "NetworkLib/WsaDataWrapper.h"
 
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
     HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption, nullptr, 0);
@@ -15,6 +16,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return 0;
     }
 
+    WsaDataWrapper wsaSession(2, 2);
     int result = 0;
     {
         auto overlay = std::make_unique<OverlayWindow>();

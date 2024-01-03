@@ -1,7 +1,7 @@
 #include "GlareComponent.h"
 
 GlareComponent::GlareComponent(ID2D1RenderTarget* target, float radiusX, float radiusY)
-	: UiComponent(target), m_radiusX(radiusX), m_radiusY(radiusY), m_rect(D2D1::RectF(-radiusX, -radiusY, radiusX, radiusY)) {
+	: m_renderTarget(target), m_radiusX(radiusX), m_radiusY(radiusY), m_rect(D2D1::RectF(-radiusX, -radiusY, radiusX, radiusY)) {
 
 }
 
@@ -10,7 +10,7 @@ GlareComponent::~GlareComponent() {
 	m_gradient.Reset();
 }
 
-HRESULT GlareComponent::Initialize() {
+bool GlareComponent::Initialize() {
 	HRESULT status = S_OK;
 
 	if (SUCCEEDED(status)) {
@@ -26,7 +26,7 @@ HRESULT GlareComponent::Initialize() {
 	return status;
 }
 
-void GlareComponent::Render() const {
+void GlareComponent::Render() {
 	m_renderTarget->FillRectangle(m_rect, m_brush.Get());
 }
 

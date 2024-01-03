@@ -36,10 +36,7 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="UdpClient.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="OverlayWindow.cpp">
+    <ClCompile Include="AsyncSsqLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="GraphicsHelper.cpp">
@@ -49,12 +46,6 @@
       <Filter>Source Files\Components</Filter>
     </ClCompile>
     <ClCompile Include="TransformStack.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="UiComponent.cpp">
-      <Filter>Source Files\Components</Filter>
-    </ClCompile>
-    <ClCompile Include="OverlayPanel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="LowLevelInputHandler.cpp">
@@ -78,24 +69,24 @@
     <ClCompile Include="S2CInfoPacket.cpp">
       <Filter>Source Files\Packets</Filter>
     </ClCompile>
+    <ClCompile Include="OverlayWindow.cpp">
+      <Filter>Source Files\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="OverlayPanel.cpp">
+      <Filter>Source Files\Components</Filter>
+    </ClCompile>
     <ClCompile Include="S2CPlayerPacket.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\Packets</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="UdpClient.h">
+    <ClInclude Include="AsyncSsqLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Protocol.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="S2CPlayerPacket.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="VecUtils.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="OverlayWindow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="GraphicsHelper.h">
@@ -107,11 +98,8 @@
     <ClInclude Include="TransformStack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="UiComponent.h">
+    <ClInclude Include="IGuiComponent.h">
       <Filter>Header Files\Components</Filter>
-    </ClInclude>
-    <ClInclude Include="OverlayPanel.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="LowLevelInputHandler.h">
       <Filter>Header Files\Event System</Filter>
@@ -134,8 +122,17 @@
     <ClInclude Include="A2SPlayerPacket.h">
       <Filter>Header Files\Packets</Filter>
     </ClInclude>
+    <ClInclude Include="OverlayWindow.h">
+      <Filter>Header Files\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="OverlayPanel.h">
+      <Filter>Header Files\Components</Filter>
+    </ClInclude>
     <ClInclude Include="S2CInfoPacket.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Packets</Filter>
+    </ClInclude>
+    <ClInclude Include="S2CPlayerPacket.h">
+      <Filter>Header Files\Packets</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

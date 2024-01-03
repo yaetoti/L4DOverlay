@@ -2,12 +2,11 @@
 
 #include <Windows.h>
 #include <ShellScalingApi.h>
-#include <ConsoleLib/Console.h>
 
-#include "OverlayWindow.h"
 #include "NetworkLib/WsaDataWrapper.h"
+#include "OverlayWindow.h"
 
-int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
+int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int) {
     HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption, nullptr, 0);
     SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 
@@ -17,10 +16,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     }
 
     WsaDataWrapper wsaSession(2, 2);
-    int result = 0;
+    int result;
     {
         auto overlay = std::make_unique<OverlayWindow>();
-        result = overlay->Run();
+        if (overlay->Initialize()) {
+            result = overlay->RunMainLoop();
+        } else {
+            result = -1;
+        }
     }
 
     CoUninitialize();

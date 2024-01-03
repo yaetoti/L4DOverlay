@@ -4,39 +4,23 @@
 #include <d2d1.h>
 #include <d2d1_1.h>
 
-#include "UiComponent.h"
+#include "IGuiComponent.h"
+#include <memory>
 
-class OverlayPanel final : public UiComponent {
-public:
-    explicit OverlayPanel(ID2D1RenderTarget* target)
-        : UiComponent(target) {
-
+struct OverlayPanel final : IGuiComponent {
+    explicit OverlayPanel(Microsoft::WRL::ComPtr<ID2D1DeviceContext> context)
+        : m_context(std::move(context)) {
     }
 
-    ~OverlayPanel() override {
-        
-    }
-
-    OverlayPanel(const OverlayPanel& other) = delete;
-    OverlayPanel(OverlayPanel&& other) = delete;
-    OverlayPanel& operator=(const OverlayPanel& other) = delete;
-    OverlayPanel& operator=(OverlayPanel&& other) = delete;
-
-    HRESULT Initialize() override {
-        HRESULT status = S_OK;
-
-        if (SUCCEEDED(status)) {
-            status = m_renderTarget->QueryInterface(m_context.GetAddressOf());
-        }
-
-        return status;
-    }
-
-    void Render() const override {
-        
+    bool Initialize() override {
+        return S_OK;
     }
 
     void Update() override {
+
+    }
+
+    void Render() override {
         
     }
 

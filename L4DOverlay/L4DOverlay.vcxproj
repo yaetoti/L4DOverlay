@@ -161,8 +161,7 @@
     <ClCompile Include="S2CInfoPacket.cpp" />
     <ClCompile Include="S2CPlayerPacket.cpp" />
     <ClCompile Include="TransformStack.cpp" />
-    <ClCompile Include="UdpClient.cpp" />
-    <ClCompile Include="UiComponent.cpp" />
+    <ClCompile Include="AsyncSsqLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="A2SInfoPacket.h" />
@@ -180,8 +179,8 @@
     <ClInclude Include="S2CChallengePacket.h" />
     <ClInclude Include="S2CInfoPacket.h" />
     <ClInclude Include="TransformStack.h" />
-    <ClInclude Include="UdpClient.h" />
-    <ClInclude Include="UiComponent.h" />
+    <ClInclude Include="AsyncSsqLoader.h" />
+    <ClInclude Include="IGuiComponent.h" />
     <ClInclude Include="VecUtils.h" />
   </ItemGroup>
   <ItemGroup>

@@ -10,8 +10,10 @@
 
 #include "LowLevelInputHandler.h"
 
-OverlayWindow::OverlayWindow() {
+// Resource management
 
+OverlayWindow::OverlayWindow()
+: m_dataLoader(L"46.174.48.86", L"27015") {
 }
 
 OverlayWindow::~OverlayWindow() {
@@ -21,36 +23,77 @@ OverlayWindow::~OverlayWindow() {
     UnregisterClassW(kClassName, GetModuleHandleW(nullptr));
 }
 
-HRESULT OverlayWindow::CreateDeviceResources() {
+bool OverlayWindow::CreateWindowResources() {
+    WNDCLASSEX wc = { };
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = WndProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), IDI_APPLICATION);
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    wc.lpszMenuName = nullptr;
+    wc.lpszClassName = kClassName;
+    wc.hIconSm = LoadIconW(wc.hInstance, IDI_APPLICATION);
+    if (0 == RegisterClassExW(&wc)) {
+        return false;
+    }
+
+    // Window should be created on the same monitor where the cursor is
+    POINT cursorPos;
+    if (0 == GetCursorPos(&cursorPos)) {
+        return false;
+    }
+
+    HMONITOR hMonitor = MonitorFromPoint(cursorPos, MONITOR_DEFAULTTONEAREST);
+    m_monitorInfo.cbSize = sizeof(m_monitorInfo);
+    GetMonitorInfoW(hMonitor, &m_monitorInfo);
+
+    // Create window
+    m_hWnd = CreateWindowExW(
+        WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+        kClassName,
+        L"Source Overlay",
+        WS_POPUP,
+        m_monitorInfo.rcWork.left, m_monitorInfo.rcWork.top, m_monitorInfo.rcMonitor.right, m_monitorInfo.rcMonitor.bottom,
+        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr
+    );
+    if (nullptr == m_hWnd) {
+        return false;
+    }
+
+    return true;
+}
+
+bool OverlayWindow::CreateGraphicsResources() {
     HRESULT status = S_OK;
 
-    // Window resources
     if (SUCCEEDED(status)) {
-        D3D_FEATURE_LEVEL d3dFeatures[] = {
+        const D3D_FEATURE_LEVEL features[] = {
             D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_11_0,
         };
 
-        if (SUCCEEDED(status)) {
-            status = D3D11CreateDevice(
-                nullptr,
-                D3D_DRIVER_TYPE_HARDWARE,
-                nullptr,
-                D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                d3dFeatures,
-                static_cast<UINT>(std::size(d3dFeatures)),
-                D3D11_SDK_VERSION,
-                m_d3dDevice.GetAddressOf(),
-                nullptr,
-                m_d3dDeviceContext.GetAddressOf()
-            );
-        }
+        status = D3D11CreateDevice(
+            nullptr,
+            D3D_DRIVER_TYPE_HARDWARE,
+            nullptr,
+            D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            features,
+            std::size(features),
+            D3D11_SDK_VERSION,
+            m_d3dDevice.GetAddressOf(),
+            nullptr,
+            m_d3dDeviceContext.GetAddressOf()
+        );
     }
     if (SUCCEEDED(status)) {
         status = m_d3dDevice.As(&m_dxgiDevice);
     }
     if (SUCCEEDED(status)) {
-        DXGI_SWAP_CHAIN_DESC1 description = { 0 };
+        DXGI_SWAP_CHAIN_DESC1 description = { };
         description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         description.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
@@ -60,13 +103,12 @@ HRESULT OverlayWindow::CreateDeviceResources() {
 
         RECT clientRect = { };
         if (FALSE == GetClientRect(m_hWnd, &clientRect)) {
-            status = GetLastError();
+            return false;
         }
-        else {
-            description.Width = clientRect.right - clientRect.left;
-            description.Height = clientRect.bottom - clientRect.top;
-            status = m_dxgiFactory->CreateSwapChainForComposition(m_d3dDevice.Get(), &description, nullptr, m_dxgiSwapChain.GetAddressOf());
-        }
+
+        description.Width = clientRect.right - clientRect.left;
+        description.Height = clientRect.bottom - clientRect.top;
+        status = m_dxgiFactory->CreateSwapChainForComposition(m_d3dDevice.Get(), &description, nullptr, m_dxgiSwapChain.GetAddressOf());
     }
     if (SUCCEEDED(status)) {
         status = m_dxgiSwapChain->GetBuffer(0, IID_PPV_ARGS(m_dxgiTargetSurface.GetAddressOf()));
@@ -106,40 +148,46 @@ HRESULT OverlayWindow::CreateDeviceResources() {
     if (SUCCEEDED(status)) {
         status = m_dcompDevice->Commit();
     }
-    // End Window resources
-    // Resources
-    if (SUCCEEDED(status)) {
-        status = LoadBitmapFromFile(m_d2dDeviceContext.Get(), m_wicFactory.Get(), L"1.webp", 342, 165, m_d2dMapBitmap.GetAddressOf());
-    }
-    
-    // End resources
-    return status;
+
+    return SUCCEEDED(status);
 }
 
-HRESULT OverlayWindow::CreateDeviceIndependentResources() {
+bool OverlayWindow::CreateGraphicsFactories() {
     HRESULT status = S_OK;
 
-    // Window resources
     if (SUCCEEDED(status)) {
         status = CreateDXGIFactory(IID_PPV_ARGS(m_dxgiFactory.GetAddressOf()));
     }
     if (SUCCEEDED(status)) {
         status = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, m_d2dFactory.GetAddressOf());
     }
-    // End Window resources
-    // WIC resources
     if (SUCCEEDED(status)) {
         status = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(m_wicFactory.GetAddressOf()));
     }
 
-    // End WIC resources
-
-    return status;
+    return SUCCEEDED(status);
 }
 
-void OverlayWindow::DiscardDeviceResources() {
-    m_d2dMapBitmap.Reset();
+bool OverlayWindow::CreateDeviceComponents() {
+    HRESULT status = S_OK;
 
+    if (SUCCEEDED(status)) {
+        status = LoadBitmapFromFile(m_d2dDeviceContext.Get(), m_wicFactory.Get(), L"1.webp", 342, 165, m_d2dMapBitmap.GetAddressOf());
+    }
+
+    return SUCCEEDED(status);
+}
+
+bool OverlayWindow::CreateDeviceResources() {
+    return CreateGraphicsResources() && CreateDeviceComponents();
+}
+
+bool OverlayWindow::CreateDeviceIndependentResources() {
+    return CreateWindowResources()
+        && CreateGraphicsFactories();
+}
+
+void OverlayWindow::DiscardGraphicsResources() {
     m_dcompVisual.Reset();
     m_dcompTarget.Reset();
     m_dcompDevice.Reset();
@@ -156,66 +204,25 @@ void OverlayWindow::DiscardDeviceResources() {
     m_d3dDevice.Reset();
 }
 
+void OverlayWindow::DiscardDeviceComponents() {
+    m_d2dMapBitmap.Reset();
+}
+
+void OverlayWindow::DiscardDeviceResources() {
+    DiscardDeviceComponents();
+    DiscardGraphicsResources();
+}
+
 void OverlayWindow::DiscardDeviceIndependentResources() {
     m_wicFactory.Reset();
     m_d2dFactory.Reset();
     m_dxgiFactory.Reset();
 }
 
-int OverlayWindow::Run() {
-	// Initialize resources
-    WNDCLASSEX wc = { };
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = WndProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = GetModuleHandleW(nullptr);
-    wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), IDI_APPLICATION);
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    wc.lpszMenuName = nullptr;
-    wc.lpszClassName = kClassName;
-    wc.hIconSm = LoadIconW(wc.hInstance, IDI_APPLICATION);
-    if (0 == RegisterClassExW(&wc)) {
-        MessageBoxW(nullptr, L"Window Registration Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
+bool OverlayWindow::Initialize() {
+    if (!(CreateDeviceIndependentResources() && CreateDeviceResources())) {
+        return false;
     }
-
-    // TODO Don't close a window but move it and recalculate sizes
-    POINT cursorPos;
-    GetCursorPos(&cursorPos);
-    HMONITOR hMonitor = MonitorFromPoint(cursorPos, MONITOR_DEFAULTTONEAREST);
-    m_monitorInfo = { sizeof(m_monitorInfo) };
-    GetMonitorInfoW(hMonitor, &m_monitorInfo);
-
-    m_hWnd = CreateWindowExW(
-        WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP, // WS_EX_LAYERED WS_EX_NOREDIRECTIONBITMAP
-        kClassName,
-        L"Source Overlay",
-        WS_POPUP,
-        m_monitorInfo.rcWork.left, m_monitorInfo.rcWork.top, m_monitorInfo.rcMonitor.right, m_monitorInfo.rcMonitor.bottom,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr
-    );
-    if (nullptr == m_hWnd) {
-        MessageBoxW(nullptr, L"Window Creation Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-
-    // DirectX initialization
-    HRESULT status = CreateDeviceIndependentResources();
-    if (FAILED(status)) {
-        MessageBoxW(nullptr, L"CreateDeviceIndependentResources() failed", L"Error", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-    status = CreateDeviceResources();
-    if (FAILED(status)) {
-        MessageBoxW(nullptr, L"CreateDeviceResources() failed", L"Error", MB_ICONEXCLAMATION | MB_OK);
-        return 0;
-    }
-
-    ShowWindow(m_hWnd, SW_SHOW);
-    UpdateWindow(m_hWnd);
 
     // Add input listeners
     LowLevelInputHandler::GetInstance()->AddKeyboardListener([this](const LowLevelKeyboardEvent& event) {
@@ -223,12 +230,14 @@ int OverlayWindow::Run() {
             return;
         }
 
-        if (OverlayState::HIDDEN == m_overlayState && WM_KEYDOWN == event.GetId()) {
+        if ((OverlayState::HIDDEN == m_overlayState || OverlayState::HIDING == m_overlayState) && WM_KEYDOWN == event.GetId()) {
             m_overlayState = OverlayState::SHOWING;
+            m_dataLoader.Start();
             return;
         }
-        if (OverlayState::HIDDEN != m_overlayState && WM_KEYUP == event.GetId()) {
+        if ((OverlayState::SHOWN == m_overlayState || OverlayState::SHOWING == m_overlayState) && WM_KEYUP == event.GetId()) {
             m_overlayState = OverlayState::HIDING;
+            m_dataLoader.Stop();
             return;
         }
     });
@@ -237,9 +246,23 @@ int OverlayWindow::Run() {
     });
     LowLevelInputHandler::GetInstance()->Start();
 
+    return true;
+}
+
+// Graphics
+
+bool OverlayWindow::RunMainLoop() {
     // Main loop
+    ShowWindow(m_hWnd, SW_SHOW);
+    UpdateWindow(m_hWnd);
+
+    m_lastTime = std::chrono::high_resolution_clock::now();
+
     MSG message;
     while (true) {
+        m_currentTime = std::chrono::high_resolution_clock::now();
+        m_elapsedTime = std::chrono::duration<double, std::milli>(m_currentTime - m_lastTime).count();
+
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
                 LowLevelInputHandler::GetInstance()->Stop();
@@ -251,355 +274,60 @@ int OverlayWindow::Run() {
         }
 
         LowLevelInputHandler::GetInstance()->Dispatch();
-        OnUpdate();
-        OnRender();
+        Update();
+        Render();
+
+        m_lastTime = m_currentTime;
     }
 }
 
-bool OverlayWindow::ResolveServerAddress(const wchar_t* ip, const wchar_t* port, uint32_t connectTimeout, ADDRINFOEXW* serverAddress) const {
-    ADDRINFOEXW* info;
-    OVERLAPPED overlapped = { };
-    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
-    overlapped.hEvent = event.Get();
-    if (nullptr == event.Get()) {
-        return false;
-    }
-
-    const uint32_t timeoutSeconds = connectTimeout / 1000;
-    const uint32_t timeoutMillis = connectTimeout - timeoutSeconds * 1000;
-    timeval timeout = { static_cast<long>(timeoutSeconds), static_cast<long>(timeoutMillis) };
-    HANDLE cancelHandle;
-
-    if (0 != GetAddrInfoExW(ip, port, NS_DNS, nullptr, nullptr, &info, &timeout, &overlapped, nullptr, &cancelHandle)) {
-        if (WSA_IO_PENDING != WSAGetLastError()) {
-            // Function failed to get ip
-            return false;
-        }
-
-        while (true) {
-            const DWORD status = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
-            if (WAIT_FAILED == status) {
-                // Function failed to get ip
-                return false;
-            }
-            if (WAIT_TIMEOUT == status && m_isCancelled) {
-                // If function isn't completed but the request is cancelled
-                GetAddrInfoExCancel(&cancelHandle);
-                return false;
-            }
-            if (WAIT_OBJECT_0 == status) {
-                // Function completed
-                break;
-            }
-        }
-    }
-
-    // Take the first available ip
-    *serverAddress = *info;
-    FreeAddrInfoExW(info);
-    return true;
-}
-
-int OverlayWindow::ReceiveSomeFrom(SOCKET socket, char* buffer, int length, const sockaddr& receiveAddress, int addressLength) const {
-    WSABUF descriptor { static_cast<ULONG>(length), buffer };
-    OVERLAPPED overlapped = { };
-    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
-    overlapped.hEvent = event.Get();
-    if (nullptr == event.Get()) {
-        return SOCKET_ERROR;
-    }
-
-    sockaddr_in address = { };
-    int receiveAddressLength = sizeof(address);
-
-    DWORD received = 0;
-    DWORD flags = 0;
-    int status = WSARecvFrom(socket, &descriptor, 1, &received, &flags, reinterpret_cast<sockaddr*>(&address), &receiveAddressLength, &overlapped, nullptr);
-    if (0 != status) {
-        if (WSA_IO_PENDING != WSAGetLastError()) {
-            // Function failed to receive data
-            return SOCKET_ERROR;
-        }
-
-        while (true) {
-            const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
-            if (WSA_WAIT_FAILED == waitStatus) {
-                // Function failed to receive data
-                return SOCKET_ERROR;
-            }
-            if (WSA_WAIT_TIMEOUT == waitStatus && m_isCancelled) {
-                // If function isn't completed but the request is cancelled
-                return SOCKET_ERROR;
-            }
-            if (WSA_WAIT_EVENT_0 == waitStatus) {
-                // Function completed
-                if (!WSAGetOverlappedResult(socket, &overlapped, &received, FALSE, &flags)) {
-                    return SOCKET_ERROR;
-                }
-
-                status = static_cast<int>(received);
-                break;
-            }
-        }
-    }
-
-    if (receiveAddressLength != addressLength || 0 != std::memcmp(&address, &receiveAddress, receiveAddressLength)) {
-        // Wrong address
-        status = -2;
-    }
-
-    return status;
-}
-
-bool OverlayWindow::SendAllTo(SOCKET socket, char* buffer, int length, const sockaddr& sendAddress, int addressLength) const {
-    WSABUF descriptor { static_cast<ULONG>(length), buffer };
-    OVERLAPPED overlapped = { };
-    ScopedHandle<HANDLE> event(CreateEventW(nullptr, TRUE, FALSE, nullptr), CloseHandle);
-    overlapped.hEvent = event.Get();
-    if (nullptr == event.Get()) {
-        return false;
-    }
-
-    DWORD sent = 0;
-    int status = WSASendTo(socket, &descriptor, 1, &sent, 0, &sendAddress, addressLength, &overlapped, nullptr);
-    if (0 != status) {
-        if (WSA_IO_PENDING != WSAGetLastError()) {
-            // Function failed to send data
-            return false;
-        }
-
-        while (true) {
-            const DWORD waitStatus = WaitForSingleObject(overlapped.hEvent, m_cancelTimeout);
-            if (WAIT_FAILED == waitStatus) {
-                // Function failed to send data
-                return false;
-            }
-            if (WAIT_TIMEOUT == waitStatus && m_isCancelled) {
-                // If function isn't completed but the request is cancelled
-                return false;
-            }
-            if (WAIT_OBJECT_0 == waitStatus) {
-                // Function completed
-                DWORD flags;
-                if (!WSAGetOverlappedResult(socket, &overlapped, &sent, FALSE, &flags)) {
-                    return false;
-                }
-
-                break;
-            }
-        }
-    }
-
-    return true;
-}
-
-bool OverlayWindow::SendPacket(SOCKET socket, const Packet<SsqPacketType>& packet, const sockaddr& sendAddress, int addressLength) const {
-    std::vector<uint8_t> buffer;
-    ByteBuffer wrapper(buffer);
-
-    wrapper.Put(HeaderType::HEADER_SIMPLE);
-    wrapper.Put(packet.GetType());
-    packet.Serialize(wrapper);
-
-    return SendAllTo(socket, std::bit_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), sendAddress, addressLength);
-}
-
-std::unique_ptr<Packet<SsqPacketType>> OverlayWindow::ReceivePacket(SOCKET socket, const sockaddr& receiveAddress, int addressLength) const {
-    std::vector<uint8_t> data;
-    HeaderType headerType;
-    SsqPacketType packetType;
-
-    while (true) {
-        try {
-            // Receive some data
-            char buffer[m_receiveBufferSize];
-            const int status = ReceiveSomeFrom(socket, buffer, m_receiveBufferSize, receiveAddress, addressLength);
-            if (SOCKET_ERROR == status) {
-                return nullptr;
-            }
-            if (-2 == status) {
-                // Skip data from unexpected address
-                continue;
-            }
-
-            data.insert(data.end(), buffer, buffer + status);
-
-            // Parse header
-            ByteBuffer wrapper(data);
-            wrapper.Get(headerType);
-            if (HeaderType::HEADER_SIMPLE != headerType) {
-                // Unsupported headerWSARecvFrom
-                return nullptr;
-            }
-
-            wrapper.Get(packetType);
-
-            // Parse packet
-            switch (packetType) {
-            case SsqPacketType::S2C_CHALLENGE:
-            {
-                S2CChallengePacket packet;
-                packet.Deserialize(wrapper);
-                return std::make_unique<S2CChallengePacket>(packet);
-            }
-            case SsqPacketType::S2C_PLAYER:
-            {
-                S2CPlayerPacket packet;
-                packet.Deserialize(wrapper);
-                return std::make_unique<S2CPlayerPacket>(packet);
-            }
-            case SsqPacketType::S2C_INFO:
-            {
-                S2CInfoPacket packet;
-                packet.Deserialize(wrapper);
-                return std::make_unique<S2CInfoPacket>(packet);
-            }
-            default:
-                // Unexpected answer
-                return nullptr;
-            }
-        }
-        catch(const std::out_of_range&) {
-            // If not enough to parse - repeat
-            continue;
-        }
-    }
-}
-
-void OverlayWindow::FetchData() {
-    m_isConnecting = true;
-    m_connectionFuture = std::async(std::launch::async, [this] {
-        ScopedHandle<SOCKET> serverSocket(
-            INVALID_SOCKET,
-            WSASocketW(AF_INET, SOCK_DGRAM, IPPROTO_UDP, nullptr, 0, WSA_FLAG_OVERLAPPED),
-            closesocket
-        );
-        if (INVALID_SOCKET == serverSocket.Get()) {
-            m_isConnectionError = true;
-            m_isConnecting = false;
-            return;
-        }
-
-        // Set timeout (This bullshit doesn't working. Lost 3 days on that)
-        DWORD timeout = m_networkTimeout;
-        setsockopt(serverSocket.Get(), SOL_SOCKET, SO_SNDTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
-        setsockopt(serverSocket.Get(), SOL_SOCKET, SO_RCVTIMEO, std::bit_cast<const char*>(&timeout), sizeof(timeout));
-
-        // Resolve server address
-        ADDRINFOEXW serverAddress = { };
-        if (!ResolveServerAddress(m_serverIp.c_str(), m_serverPort.c_str(), m_networkTimeout, &serverAddress)) {
-            m_isConnectionError = true;
-            m_isConnecting = false;
-            return;
-        }
-
-        // Variables
-        std::unique_ptr<Packet<SsqPacketType>> infoPacket;
-        std::unique_ptr<Packet<SsqPacketType>> playersPacket;
-        int challenge = -1;
-
-        // Retrieving server info
-        while (true) {
-            if (!SendPacket(serverSocket.Get(), A2SInfoPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            infoPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen));
-            if (!infoPacket) {
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            if (SsqPacketType::S2C_CHALLENGE == infoPacket->GetType()) {
-                // Repeat with received challenge number
-                challenge = reinterpret_cast<S2CChallengePacket*>(infoPacket.get())->GetChallenge();
-                continue;
-            }
-            if (SsqPacketType::S2C_INFO != infoPacket->GetType()) {
-                // Unexpected answer
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            break;
-        }
-        // Retrieving players info
-        while (true) {
-            if (!SendPacket(serverSocket.Get(), A2SPlayerPacket(challenge), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen))) {
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            playersPacket = ReceivePacket(serverSocket.Get(), *serverAddress.ai_addr, static_cast<int>(serverAddress.ai_addrlen));
-            if (!playersPacket) {
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            if (SsqPacketType::S2C_CHALLENGE == playersPacket->GetType()) {
-                // Repeat with received challenge number
-                challenge = reinterpret_cast<S2CChallengePacket*>(playersPacket.get())->GetChallenge();
-                continue;
-            }
-            if (SsqPacketType::S2C_PLAYER != playersPacket->GetType()) {
-                // Unexpected answer
-                m_isConnectionError = true;
-                m_isConnecting = false;
-                return;
-            }
-
-            break;
-        }
-
-        // Packets received
-        // TODO Ugly. Implement move semantic
-        m_serverInfo = std::make_unique<S2CInfoPacket>(reinterpret_cast<S2CInfoPacket&>(*infoPacket));
-        m_playerInfo = std::make_unique<S2CPlayerPacket>(reinterpret_cast<S2CPlayerPacket&>(*playersPacket));
-        m_isDataValid = true;
-        m_isConnecting = false;
-    });
-}
-
-void OverlayWindow::OnUpdate() {
-    if (OverlayState::HIDDEN != m_overlayState && !m_isDataValid && !m_isConnecting && !m_isConnectionError) {
-        Console::GetInstance()->WPrintF(L"Loading data\n");
-        FetchData();
-    }
-
-    if (m_isConnecting) {
-        Console::GetInstance()->WPrintF(L"Connecting\n");
-    }
-
-    if (!m_isConnecting) {
-        if (m_isConnectionError) {
-            Console::GetInstance()->WPrintF(L"Error\n");
-        }
-
-        if (m_isDataValid) {
-            Console::GetInstance()->WPrintF(L"Data valid\n");
-        }
+void OverlayWindow::Update() {
+    if (m_overlayState == OverlayState::SHOWING || m_overlayState == OverlayState::SHOWN) {
+        // TODO Fetch data
+        m_dataLoader.Update(m_elapsedTime);
     }
 
     switch (m_overlayState) {
     case OverlayState::HIDDEN:
+
         break;
     case OverlayState::SHOWING:
+        m_showingTime += m_elapsedTime;
+        m_showingProgress = m_showingTime / m_showingDuration;
+        if (m_showingProgress >= 1.0) {
+            m_showingProgress = 1.0;
+            m_showingTime = m_showingDuration;
+            m_overlayState = OverlayState::SHOWN;
+            break;
+        }
+
+        m_showingProgress = EasingFunctions::EaseOutCubic(m_showingProgress);
 
         break;
     case OverlayState::SHOWN:
+
         break;
     case OverlayState::HIDING:
+        m_showingTime -= m_elapsedTime;
+        m_showingProgress = m_showingTime / m_showingDuration;
+        if (m_showingProgress <= 0.0) {
+            m_showingProgress = 0.0;
+            m_showingTime = 0.0;
+            m_overlayState = OverlayState::HIDDEN;
+            break;
+        }
+
+        m_showingProgress = EasingFunctions::EaseOutCubic(m_showingProgress);
+
+        //if (!m_isConnecting) {
+        //    m_isCancelled = true;
+        //}
+
         break;
     }
 }
 
-void OverlayWindow::OnRender() {
+void OverlayWindow::Render() {
     static float colorR = 0.0;
     static bool up = true;
     //if (up) {
@@ -628,11 +356,11 @@ void OverlayWindow::OnRender() {
     float OverlayWidth = 390.0f;
     float OverlayHeight = monitorY - 2 * overlayPaddingY;
     float OverlayDiagonal = sqrtf(OverlayWidth * OverlayWidth + OverlayHeight * OverlayHeight);
-    
+
     float BaseGradientAngle = atan2f(OverlayWidth, OverlayHeight) * 180.0f / M_PI;
     float BaseGradientWidth = OverlayWidth / 1.8f;
     float BaseGradientHeight = OverlayHeight / 1.8f;
-    
+
     float MapWidth = 342.0f;
     float MapHeight = 165.0f;
     float MapX = 24.0f;
@@ -640,12 +368,12 @@ void OverlayWindow::OnRender() {
 
     float MapFrameStroke = 4.0f;
 
-    D2D1_RECT_F MapRect = D2D1::RectF(OverlayX + MapX, OverlayY + MapY, OverlayX + MapX + MapWidth, OverlayY + MapY + MapHeight);
+    D2D1_RECT_F MapRect = D2D1::RectF(MapX, MapY, MapX + MapWidth, MapY + MapHeight);
     D2D1_RECT_F MapFrameRect = D2D1::RectF(
-        OverlayX + MapX - MapFrameStroke * 2.7f,
-        OverlayY + MapY - MapFrameStroke * 2.7f,
-        OverlayX + MapX + MapWidth + MapFrameStroke * 2.7f,
-        OverlayY + MapY + MapHeight + MapFrameStroke * 2.7f
+        MapX - MapFrameStroke * 2.7f,
+        MapY - MapFrameStroke * 2.7f,
+        MapX + MapWidth + MapFrameStroke * 2.7f,
+        MapY + MapHeight + MapFrameStroke * 2.7f
     );
 
     // Gradients
@@ -690,7 +418,7 @@ void OverlayWindow::OnRender() {
     overlayBaseBrush->SetTransform(
         D2D1::Matrix3x2F::Rotation(-BaseGradientAngle)
         * D2D1::Matrix3x2F::Scale(D2D1::SizeF(1.0f, OverlayDiagonal / OverlayHeight))
-        * D2D1::Matrix3x2F::Translation(OverlayX + OverlayWidth / 2, OverlayY + OverlayHeight / 2));
+        * D2D1::Matrix3x2F::Translation(OverlayWidth / 2, OverlayHeight / 2));
 
     ComPtr<ID2D1RadialGradientBrush> overlayStrokeBrush;
     m_d2dDeviceContext->CreateRadialGradientBrush(
@@ -699,7 +427,7 @@ void OverlayWindow::OnRender() {
     overlayStrokeBrush->SetTransform(
         D2D1::Matrix3x2F::Rotation(-BaseGradientAngle)
         * D2D1::Matrix3x2F::Scale(D2D1::SizeF(1.0f, OverlayDiagonal / OverlayHeight))
-        * D2D1::Matrix3x2F::Translation(OverlayX + OverlayWidth / 2, OverlayY + OverlayHeight / 2));
+        * D2D1::Matrix3x2F::Translation(OverlayWidth / 2, OverlayHeight / 2));
 
     ComPtr<ID2D1SolidColorBrush> mapStrokeBrush;
     m_d2dDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0x5F5F5F), mapStrokeBrush.GetAddressOf());
@@ -713,18 +441,18 @@ void OverlayWindow::OnRender() {
     // Geometries
     ComPtr<ID2D1PathGeometry> overlayBaseGeometry;
     CreateFillRoundedRectangleGeometryEx(m_d2dFactory.Get(),
-        RoundedRectEx(D2D1::RectF(0.0f, overlayPaddingY, 390.0f - colorR * 394.0f, monitorY - overlayPaddingY),
-            0.0f, 10.0f, 10.0f, 0.0f),
-        overlayBaseGeometry.GetAddressOf());
+                                         RoundedRectEx(D2D1::RectF(0.0f, 0, OverlayWidth, OverlayHeight),
+                                                       0.0f, 1.0f, 1.0f, 0.0f),
+                                         overlayBaseGeometry.GetAddressOf());
     ComPtr<ID2D1PathGeometry> overlayStrokeGeometry;
     CreateFillRoundedRectangleGeometryEx(m_d2dFactory.Get(),
-        RoundedRectEx(D2D1::RectF(0.0f, overlayPaddingY, 394.0f - colorR * 394.0f, monitorY - overlayPaddingY + 1.0f),
-            0.0f, 10.0f, 10.0f, 0.0f),
-        overlayStrokeGeometry.GetAddressOf());
+                                         RoundedRectEx(D2D1::RectF(0.0f, 0, OverlayWidth + 4, OverlayHeight + 1),
+                                                       0.0f, 1.0f, 1.0f, 0.0f),
+                                         overlayStrokeGeometry.GetAddressOf());
     ComPtr<ID2D1PathGeometry> mapGeometry;
     CreateFillRoundedRectangleGeometryEx(m_d2dFactory.Get(),
-        RoundedRectEx(MapRect, 0.0f, 0.0f, 0.0f, 0.0f),
-        mapGeometry.GetAddressOf());
+                                         RoundedRectEx(MapRect, 0.0f, 0.0f, 0.0f, 0.0f),
+                                         mapGeometry.GetAddressOf());
 
     ComPtr<ID2D1PathGeometry> frameGeometry;
     CreateFrameGeometry(m_d2dFactory.Get(), Frame(MapFrameRect, D2D1::Point2F(90.0f, 30.0f), D2D1::Point2F(MapFrameStroke * 4, MapFrameStroke * 4)), frameGeometry.GetAddressOf());
@@ -736,10 +464,13 @@ void OverlayWindow::OnRender() {
     overlayRenderTarget->QueryInterface(IID_PPV_ARGS(overlayDeviceContext.GetAddressOf()));
     ComPtr<ID2D1Bitmap> overlayBitmap;
 
+    TransformStack overlayStack(overlayDeviceContext.Get());
+    overlayStack.Translate(OverlayX - (1.0 - m_showingProgress) * (OverlayWidth + 4), OverlayY);
+
     // Overlay rendering
     overlayRenderTarget->BeginDraw();
     overlayRenderTarget->Clear(D2D1::ColorF(0x000000, 0.0f));
-    
+
     overlayRenderTarget->FillGeometry(overlayStrokeGeometry.Get(), overlayStrokeBrush.Get());
     overlayRenderTarget->FillGeometry(overlayBaseGeometry.Get(), overlayBaseBrush.Get());
 
@@ -759,7 +490,7 @@ void OverlayWindow::OnRender() {
     // Map rendering
     ComPtr<ID2D1ImageBrush> mapImageBrush;
     overlayDeviceContext->CreateImageBrush(vignetteOutput.Get(), D2D1::ImageBrushProperties(D2D1::RectF(0, 0, MapWidth, MapHeight)), mapImageBrush.GetAddressOf());
-    mapImageBrush->SetTransform(D2D1::Matrix3x2F::Translation(OverlayX + MapX, OverlayY + MapY));
+    mapImageBrush->SetTransform(D2D1::Matrix3x2F::Translation(MapX, MapY));
     overlayDeviceContext->FillGeometry(mapGeometry.Get(), mapImageBrush.Get());
 
     // Map frame
@@ -778,6 +509,8 @@ void OverlayWindow::OnRender() {
     overlayDeviceContext->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), overlayBaseGeometry.Get()), layer.Get());
 
     TransformStack stack(overlayDeviceContext.Get());
+    stack.Translate((1 - m_showingProgress * m_showingProgress) * (OverlayWidth + 4), 0);
+    stack.Translate(0, -80);
     stack.Rotate(-30.0f);
     stack.Translate(150.0f, 450.0f);
     glare1.Render();
@@ -788,6 +521,8 @@ void OverlayWindow::OnRender() {
     stack.Reset();
 
     overlayDeviceContext->PopLayer();
+
+    overlayStack.Reset();
 
     // Get overlay bitmap
     overlayRenderTarget->EndDraw();
@@ -820,18 +555,7 @@ void OverlayWindow::OnRender() {
 
     // End
     status = m_d2dDeviceContext->EndDraw();
-    if (FAILED(status)) {
-        // TODO handle device hotswitch
-        Console::GetInstance()->WPrintF(L"EndDraw() failed with status: 0x%lXL\n", status);
-    }
     status = m_dxgiSwapChain->Present(1, 0);
-    if (FAILED(status)) {
-        // TODO handle device hotswitch
-        Console::GetInstance()->WPrintF(L"Present() failed with status: 0x%lXL\n", status);
-    }
-}
-
-void OverlayWindow::OnResize() {
 }
 
 LRESULT OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {

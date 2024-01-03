@@ -38,6 +38,7 @@
 // Component model
 #include "AsyncSsqLoader.h"
 #include "IGuiComponent.h"
+#include "OverlayGraphics.h"
 
 using Microsoft::WRL::ComPtr; // TODO remove
 
@@ -65,25 +66,9 @@ private:
 	MONITORINFO m_monitorInfo;
 	const wchar_t* const kClassName = L"SourceOverlayClass";
 
-	// Device-dependent
-	ComPtr<ID3D11Device> m_d3dDevice;
-	ComPtr<ID3D11DeviceContext> m_d3dDeviceContext;
-
-	ComPtr<IDXGIDevice> m_dxgiDevice;
-	ComPtr<IDXGISwapChain1> m_dxgiSwapChain;
-	ComPtr<IDXGISurface2> m_dxgiTargetSurface;
-
-	ComPtr<IDCompositionDevice> m_dcompDevice;
-	ComPtr<IDCompositionTarget> m_dcompTarget;
-	ComPtr<IDCompositionVisual> m_dcompVisual;
-
-	ComPtr<ID2D1Device> m_d2dDevice;
-	ComPtr<ID2D1DeviceContext> m_d2dDeviceContext;
-	ComPtr<ID2D1Bitmap1> m_d2dTargetBitmap;
+	std::unique_ptr<OverlayGraphics> m_graphics;
 
 	// Device-independent
-	ComPtr<IDXGIFactory2> m_dxgiFactory;
-	ComPtr<ID2D1Factory1> m_d2dFactory;
 	ComPtr<IWICImagingFactory> m_wicFactory;
 
 	// Rendering
@@ -113,7 +98,6 @@ private:
     bool CreateDeviceComponents();
     bool CreateWindowResources();
     bool CreateGraphicsResources();
-    void DiscardGraphicsResources();
     void DiscardDeviceComponents();
 
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);

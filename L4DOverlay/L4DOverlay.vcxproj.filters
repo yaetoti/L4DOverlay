@@ -78,6 +78,9 @@
     <ClCompile Include="S2CPlayerPacket.cpp">
       <Filter>Source Files\Packets</Filter>
     </ClCompile>
+    <ClCompile Include="OverlayGraphics.cpp">
+      <Filter>Source Files\Components</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AsyncSsqLoader.h">
@@ -133,6 +136,9 @@
     </ClInclude>
     <ClInclude Include="S2CPlayerPacket.h">
       <Filter>Header Files\Packets</Filter>
+    </ClInclude>
+    <ClInclude Include="OverlayGraphics.h">
+      <Filter>Header Files\Components</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
